@@ -53,7 +53,7 @@ Build CLI:
 cargo build
 ```
 
-Create vesting instance and store its SEED value
+Create vesting instance
 ```bash
 echo "RUST_BACKTRACE=1 ./target/debug/vesting-contract-cli      \
 --url https://api.devnet.solana.com                             \
