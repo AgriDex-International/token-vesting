@@ -64,7 +64,7 @@ create                                                          \
 --source_token_address $TOKEN_ACCOUNT_SOURCE                    \
 --destination_token_address $ACCOUNT_TOKEN_DEST                 \
 --amounts 2,1,3,!                                               \
---release-times 1,28504431,2850600000000000,!                   \
+--release-times 1,1719309600,1719313200,!                       \
 --payer ~/.config/solana/id_owner.json"                         \
 --verbose | bash              
 ```
@@ -77,8 +77,11 @@ echo "RUST_BACKTRACE=1 ./target/debug/vesting-contract-cli      \
 --url https://api.devnet.solana.com                             \
 --program_id $PROGRAM_ID                                        \
 info                                                            \
---seed $SEED " | bash                                          
+--mint_address $MINT                                           \
+--destination_token_address $ACCOUNT_TOKEN_DEST" | bash                                          
 ```
+
+To use [Associated Token Account](https://spl.solana.com/associated-token-account) as destination use `--destination_address`(with public key of `id_dest`) instead of `--destination_token_address`.
 
 Change owner:
 ```bash

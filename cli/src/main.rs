@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration};
+use chrono::{DateTime, Duration, Utc, NaiveDateTime};
 use clap::{
     crate_description, crate_name, crate_version, value_t, App, AppSettings, Arg, SubCommand,
 };
@@ -186,17 +186,14 @@ fn command_change_destination(
 
 fn command_info(
     rpc_client: RpcClient,
-    rpc_url: String,
     program_id: Pubkey,
-    vesting_seed: [u8; 32],
+    destination_token_pubkey: Pubkey,
 ) {
     msg!("\n---------------VESTING--CONTRACT--INFO-----------------\n");
-    msg!("RPC URL: {:?}", &rpc_url);
     msg!("Program ID: {:?}", &program_id);
-    msg!("Vesting Seed: {:?}", Pubkey::new_from_array(vesting_seed));
 
-    // Find the non reversible public key for the vesting contract via the seed
-    let (vesting_pubkey, _) = Pubkey::find_program_address(&[&vesting_seed[..31]], &program_id);
+    // Find the public key for the vesting contract via the seed derived from the destination token account
+    let (vesting_pubkey, _) = Pubkey::find_program_address(&[&destination_token_pubkey.to_bytes()[..31]], &program_id);
     msg!("Vesting Account Pubkey: {:?}", &vesting_pubkey);
 
     let packed_state = rpc_client.get_account_data(&vesting_pubkey).unwrap();
@@ -204,6 +201,11 @@ fn command_info(
         VestingScheduleHeader::unpack(&packed_state[..VestingScheduleHeader::LEN]).unwrap();
     let vesting_token_pubkey =
         get_associated_token_address(&vesting_pubkey, &state_header.mint_address);
+    
+    let mint_data: spl_token::state::Mint = spl_token::state::Mint::unpack(
+        &rpc_client.get_account(&state_header.mint_address).unwrap().data
+    ).unwrap();
+    
     msg!("Vesting Token Account Pubkey: {:?}", &vesting_token_pubkey);
     msg!("Initialized: {:?}", &state_header.is_initialized);
     msg!("Mint Address: {:?}", &state_header.mint_address);
@@ -216,8 +218,8 @@ fn command_info(
 
     for i in 0..schedules.len() {
         msg!("\nSCHEDULE {:?}", i);
-        msg!("Release Height: {:?}", &schedules[i].release_time);
-        msg!("Amount: {:?}", &schedules[i].amount);
+        msg!("Release time: {:?} ({:?})", &schedules[i].release_time, DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(schedules[i].release_time as i64, 0), Utc));
+        msg!("Amount: {:?}", spl_token::amount_to_ui_amount(schedules[i].amount, mint_data.decimals) );
     }
 }
 
@@ -498,13 +500,37 @@ fn main() {
         )
         .subcommand(SubCommand::with_name("info").about("Print information about a vesting contract")
             .arg(
-                Arg::with_name("seed")
-                    .long("seed")
-                    .value_name("SEED")
-                    .validator(is_parsable::<String>)
+                Arg::with_name("mint_address")
+                    .long("mint_address")
+                    .value_name("ADDRESS")
+                    .validator(is_pubkey)
                     .takes_value(true)
                     .help(
-                        "Specify the seed for the vesting contract.",
+                        "Specify the address (publickey) of the mint for the token that should be used.",
+                    ),
+            )
+            .arg(
+                Arg::with_name("destination_address")
+                    .long("destination_address")
+                    .value_name("ADDRESS")
+                    .validator(is_pubkey)
+                    .takes_value(true)
+                    .help(
+                        "Specify the destination (non-token) account address. \
+                        If specified, the vesting destination will be the associated \
+                        token account for the mint of the contract."
+                    ),
+            )
+            .arg(
+                Arg::with_name("destination_token_address")
+                    .long("destination_token_address")
+                    .value_name("ADDRESS")
+                    .validator(is_pubkey)
+                    .takes_value(true)
+                    .help(
+                        "Specify the destination token account address. \
+                        If specified, this address will be used as a destination, \
+                        and overwrite the associated token account.",
                     ),
             )
         )
@@ -639,9 +665,16 @@ fn main() {
             )
         }
         ("info", Some(arg_matches)) => {
-            let vesting_seed = pubkey_of(arg_matches, "seed").unwrap().to_bytes();
-            let rpcurl = value_of(arg_matches, "rpc_url").unwrap();
-            command_info(rpc_client, rpcurl, program_id, vesting_seed)
+            let mint_address = pubkey_of(arg_matches, "mint_address").unwrap();
+            let destination_token_pubkey = match pubkey_of(arg_matches, "destination_token_address") {
+                None => get_associated_token_address(
+                    &pubkey_of(arg_matches, "destination_address").unwrap(),
+                    &mint_address,
+                ),
+                Some(associated_token_address) => associated_token_address,
+            };
+
+            command_info(rpc_client, program_id, destination_token_pubkey);
         }
         _ => unreachable!(),
     };
