@@ -101,7 +101,8 @@ echo "RUST_BACKTRACE=1 ./target/debug/vesting-contract-cli      \
 --url https://api.devnet.solana.com                             \
 --program_id $PROGRAM_ID                                        \
 unlock                                                          \
---seed $SEED                                                    \
+--mint_address $MINT                                            \
+--destination_token_address $ACCOUNT_TOKEN_DEST                 \
 --payer ~/.config/solana/id_owner.json" | bash
 ```
 

@@ -105,15 +105,17 @@ fn command_create_svc(
 fn command_unlock_svc(
     rpc_client: RpcClient,
     program_id: Pubkey,
-    vesting_seed: [u8; 32],
+    destination_token_pubkey: Pubkey,
     payer: Keypair,
 ) {
-    // Find the non reversible public key for the vesting contract via the seed
-    let (vesting_pubkey, _) = Pubkey::find_program_address(&[&vesting_seed[..31]], &program_id);
+    // Find a valid seed for the vesting program account to be derived from the destination token account
+    let mut vesting_seed = destination_token_pubkey.to_bytes();
+
+    let (vesting_pubkey, program_id_bump) = Pubkey::find_program_address(&[&vesting_seed[..31]], &program_id);
+    vesting_seed[31] = program_id_bump;
 
     let packed_state = rpc_client.get_account_data(&vesting_pubkey).unwrap();
-    let header_state =
-        VestingScheduleHeader::unpack(&packed_state[..VestingScheduleHeader::LEN]).unwrap();
+    let header_state = VestingScheduleHeader::unpack(&packed_state[..VestingScheduleHeader::LEN]).unwrap();
     let destination_token_pubkey = header_state.destination_address;
 
     let vesting_token_pubkey =
@@ -416,13 +418,37 @@ fn main() {
         .subcommand(SubCommand::with_name("unlock").about("Unlock a vesting contract. This will only release \
         the schedules that have reached maturity.")
             .arg(
-                Arg::with_name("seed")
-                    .long("seed")
-                    .value_name("SEED")
-                    .validator(is_parsable::<String>)
+                Arg::with_name("mint_address")
+                    .long("mint_address")
+                    .value_name("ADDRESS")
+                    .validator(is_pubkey)
                     .takes_value(true)
                     .help(
-                        "Specify the seed for the vesting contract.",
+                        "Specify the address (publickey) of the mint for the token that should be used.",
+                    ),
+            )
+            .arg(
+                Arg::with_name("destination_address")
+                    .long("destination_address")
+                    .value_name("ADDRESS")
+                    .validator(is_pubkey)
+                    .takes_value(true)
+                    .help(
+                        "Specify the destination (non-token) account address. \
+                        If specified, the vesting destination will be the associated \
+                        token account for the mint of the contract."
+                    ),
+            )
+            .arg(
+                Arg::with_name("destination_token_address")
+                    .long("destination_token_address")
+                    .value_name("ADDRESS")
+                    .validator(is_pubkey)
+                    .takes_value(true)
+                    .help(
+                        "Specify the destination token account address. \
+                        If specified, this address will be used as a destination, \
+                        and overwrite the associated token account.",
                     ),
             )
             .arg(
@@ -641,10 +667,17 @@ fn main() {
             )
         }
         ("unlock", Some(arg_matches)) => {
-            // The seed is given in the format of a pubkey on the user side but it's handled as a [u8;32] in the program
-            let vesting_seed = pubkey_of(arg_matches, "seed").unwrap().to_bytes();
+            let mint_address = pubkey_of(arg_matches, "mint_address").unwrap();
+            let destination_token_pubkey = match pubkey_of(arg_matches, "destination_token_address") {
+                None => get_associated_token_address(
+                    &pubkey_of(arg_matches, "destination_address").unwrap(),
+                    &mint_address,
+                ),
+                Some(associated_token_address) => associated_token_address,
+            };
+            
             let payer_keypair = keypair_of(arg_matches, "payer").unwrap();
-            command_unlock_svc(rpc_client, program_id, vesting_seed, payer_keypair)
+            command_unlock_svc(rpc_client, program_id, destination_token_pubkey, payer_keypair);
         }
         ("change-destination", Some(arg_matches)) => {
             let vesting_seed = pubkey_of(arg_matches, "seed").unwrap().to_bytes();
