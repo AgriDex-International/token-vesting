@@ -87,13 +87,8 @@ fn command_create_svc(
     let recent_blockhash = rpc_client.get_recent_blockhash().unwrap().0;
     transaction.sign(&[&payer], recent_blockhash);
 
-    msg!(
-        "\nThe seed of the contract is: {:?}",
-        Pubkey::new_from_array(vesting_seed)
-    );
-    msg!("Please write it down as it is needed to interact with the contract!");
-
-    msg!("The vesting account pubkey: {:?}", vesting_pubkey,);
+    msg!("\nThe seed of the contract is: {:?}", Pubkey::new_from_array(vesting_seed));
+    msg!("The vesting account pubkey: {:?}", vesting_pubkey);
 
     if confirm {
         rpc_client
