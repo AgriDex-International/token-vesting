@@ -38,19 +38,15 @@ fn command_create_svc(
         _ => possible_source_token_pubkey.unwrap(),
     };
 
-    // Find a valid seed for the vesting program account key to be non reversible and unused
-    let mut not_found = true;
-    let mut vesting_seed: [u8; 32] = [0; 32];
-    let mut vesting_pubkey = Pubkey::new_unique();
-    while not_found {
-        vesting_seed = Pubkey::new_unique().to_bytes();
-        let program_id_bump = Pubkey::find_program_address(&[&vesting_seed[..31]], &program_id);
-        vesting_pubkey = program_id_bump.0;
-        vesting_seed[31] = program_id_bump.1;
-        not_found = match rpc_client.get_account(&vesting_pubkey) {
-            Ok(_) => true,
-            Err(_) => false,
-        }
+    // Find a valid seed for the vesting program account to be derived from the destination token account
+    let mut vesting_seed = destination_token_pubkey.to_bytes();
+    
+    let (vesting_pubkey, program_id_bump) = Pubkey::find_program_address(&[&vesting_seed[..31]], &program_id);
+    vesting_seed[31] = program_id_bump;
+  
+    if rpc_client.get_account(&vesting_pubkey).is_ok() {
+        msg!("\nVesting account is already created: {:?}", vesting_pubkey);
+        std::process::exit(1);
     }
 
     let vesting_token_pubkey = get_associated_token_address(&vesting_pubkey, &mint_address);
